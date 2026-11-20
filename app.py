@@ -52,6 +52,12 @@ def duration(a, b):
     return f"{m // 60}h {m % 60}m" if m >= 60 else f"{m} min"
 
 
+@app.template_filter("mins")
+def fmt_mins(m):
+    m = int(m or 0)
+    return f"{m} min" if m < 90 else f"{m / 60:.1f} hours".replace(".0 ", " ")
+
+
 @app.template_filter("short_delivery")
 def short_delivery(text):
     """'Tomorrow, 11 PM' → 'Tomorrow'; 'Sunday, 22 Nov' → 'Sun 22 Nov'."""
@@ -103,6 +109,15 @@ def start_run(trigger, pairs=None, message=None):
     return run_id
 
 
+def recently_blocked():
+    """True if Flipkart blocked a check in the last 24 hours: back off for a day."""
+    with db.connect() as con:
+        r = con.execute("SELECT finished_at FROM runs WHERE status='failed' AND message LIKE 'Blocked%' "
+                        "ORDER BY id DESC LIMIT 1").fetchone()
+    d = _dt(r["finished_at"]) if r else None
+    return bool(d and (datetime.now() - d).total_seconds() < 86400)
+
+
 def scheduler_loop():
     while True:
         try:
@@ -115,7 +130,14 @@ def scheduler_loop():
                 today = now.strftime("%Y-%m-%d")
                 if (due_today and (now.hour, now.minute) >= (hh, mm)
                         and s.get("last_scheduled_run") != today and active_run_id() is None):
-                    if start_run("schedule"):
+                    if recently_blocked():
+                        db.set_settings({"last_scheduled_run": today})
+                        print("scheduler: skipped today, Flipkart blocked a check in the last 24 hours")
+                    elif s.get("schedule_scope") == "batch":
+                        pairs, n = snapshot.next_batch(int(s.get("batch_size", 100)))
+                        if pairs and start_run("schedule", pairs=pairs, message=f"Batch: {n} stalest pincodes"):
+                            db.set_settings({"last_scheduled_run": today})
+                    elif start_run("schedule", message="Full check"):
                         db.set_settings({"last_scheduled_run": today})
         except Exception as e:
             print("scheduler error:", e)
@@ -134,8 +156,9 @@ def active_run():
 
 @app.context_processor
 def inject():
+    s = db.get_settings()
     return {"STATUS_LABEL": STATUS_LABEL, "active_run": active_run_id(),
-            "publish_mode": db.get_settings().get("publish_mode", "off")}
+            "publish_mode": s.get("publish_mode", "off"), "batch_size": int(s.get("batch_size", 100))}
 
 
 # ---------------------------------------------------------------- pages
@@ -196,9 +219,14 @@ def recheck():
     elif scope == "errors":
         pairs = [k for k, c in data["cells"].items() if c["status"] in ("ERROR", "UNKNOWN")]
         what = "failed checks"
-    elif scope == "missing":
-        pairs = [(p, q) for p in data["pins"] for q in pids if (p, q) not in data["cells"]]
-        what = "unchecked cells"
+    elif scope == "missing":  # capped at one batch so a click never starts a day-long job
+        cap = int(db.get_settings().get("batch_size", 100))
+        pins = [p for p in data["pins"] if any((p, q) not in data["cells"] for q in pids)][:cap]
+        pairs = [(p, q) for p in pins for q in pids if (p, q) not in data["cells"]]
+        what = f"unchecked cells at {len(pins)} pincode{'s' if len(pins) != 1 else ''}"
+    elif scope == "batch":
+        pairs, n = snapshot.next_batch(int(db.get_settings().get("batch_size", 100)))
+        what = f"next batch ({n} stalest pincodes)"
     else:
         abort(400)
     if not pairs:
@@ -214,7 +242,7 @@ def recheck():
 def run_stop(run_id):
     with db.connect() as con:
         con.execute("UPDATE runs SET status='stopping' WHERE id=? AND status='running'", (run_id,))
-    flash("Stopping after the current pincode finishes.", "info")
+    flash("Stopping after the current pincode finishes. Finished pincodes keep their new results.", "info")
     return redirect(url_for("dashboard"))
 
 
@@ -346,7 +374,9 @@ def pincodes():
         items = [dict(r) for r in con.execute(f"SELECT * FROM pincodes {PIN_ORDER}")]
     counts = {"all": len(items), "metro": sum(1 for i in items if i["is_metro"]),
               "capital": sum(1 for i in items if i["is_capital"]),
-              "custom": sum(1 for i in items if not i["is_metro"] and not i["is_capital"])}
+              "district": sum(1 for i in items if i["is_district"]),
+              "custom": sum(1 for i in items if not (i["is_metro"] or i["is_capital"] or i["is_district"])),
+              "district_total": len(db.district_rows())}
     return render_template("pincodes.html", items=items, cov=cov, counts=counts)
 
 
@@ -358,6 +388,17 @@ def pincode_action(pid, action):
         elif action == "delete":
             con.execute("DELETE FROM results WHERE pincode=(SELECT pincode FROM pincodes WHERE id=?)", (pid,))
             con.execute("DELETE FROM pincodes WHERE id=?", (pid,))
+    return redirect(url_for("pincodes"))
+
+
+@app.post("/pincodes/districts/<action>")
+def pincodes_districts(action):
+    if action == "add":
+        n = db.import_districts()
+        flash(f"District pincodes added: {n} districts. Use batches (Settings) rather than full checks.", "ok")
+    elif action == "remove":
+        n = db.remove_districts()
+        flash(f"Removed {n} district pincodes. Metros, capitals and your own pincodes were kept.", "info")
     return redirect(url_for("pincodes"))
 
 
@@ -386,6 +427,8 @@ def settings():
             "schedule_time": f.get("schedule_time", "06:00") or "06:00",
             "schedule_weekday": f.get("schedule_weekday", "0"),
             "min_delay": dmin, "max_delay": dmax,
+            "schedule_scope": "batch" if f.get("schedule_scope") == "batch" else "full",
+            "batch_size": max(5, min(1000, int(f.get("batch_size") or 100))),
             "publish_mode": f.get("publish_mode") if f.get("publish_mode") in ("off", "git", "vercel") else "off",
             "auto_publish": "1" if f.get("auto_publish") else "0",
         })
@@ -396,8 +439,13 @@ def settings():
         n_pin = con.execute("SELECT COUNT(*) FROM pincodes WHERE active=1").fetchone()[0]
     s = db.get_settings()
     avg = (float(s.get("min_delay", 2)) + float(s.get("max_delay", 5))) / 2
-    est_min = round(n_pin * (12 + n_prod * (avg + 5)) / 60)
-    return render_template("settings.html", s=s, n_prod=n_prod, n_pin=n_pin, est_min=est_min)
+    per_pin = (12 + n_prod * (avg + 5)) / 60
+    est_min = round(n_pin * per_pin)
+    batch = int(s.get("batch_size", 100))
+    est_batch = round(min(batch, n_pin) * per_pin)
+    cycle = -(-n_pin // batch) if batch else 0
+    return render_template("settings.html", s=s, n_prod=n_prod, n_pin=n_pin, est_min=est_min,
+                           est_batch=est_batch, cycle=cycle, batch=batch)
 
 
 if __name__ == "__main__":

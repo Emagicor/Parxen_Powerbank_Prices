@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Schedule{% endblock %}
+{% block title %}Settings{% endblock %}
 {% block content %}
 <header class="page-head">
-  <div><p class="eyebrow">Automation</p><h1>Schedule</h1>
+  <div><p class="eyebrow">Automation</p><h1>Settings</h1>
   <p class="sub">Automatic checks run while this app is open on this computer. To run with the app closed, use Windows Task Scheduler (see README).</p></div>
 </header>
 
@@ -27,7 +27,16 @@
         </select></label>
       <label class="field"><span>Time</span><input type="time" name="schedule_time" value="{{ s.schedule_time }}"></label>
     </div>
+    <h2 style="margin-top:18px">Each automatic check covers</h2>
+    <div class="choice-list">
+      <label class="choice"><input type="radio" name="schedule_scope" value="full" {{ 'checked' if s.schedule_scope != 'batch' }}>
+        <span><b>Every pincode</b><small>About {{ est_min|mins }} for {{ n_pin }} pincodes. Fine for a short list.</small></span></label>
+      <label class="choice"><input type="radio" name="schedule_scope" value="batch" {{ 'checked' if s.schedule_scope == 'batch' }}>
+        <span><b>A rolling batch</b><small>The pincodes with the oldest results. About {{ est_batch|mins }} per batch; every pincode is refreshed every {{ cycle }} run{{ 's' if cycle != 1 }}.</small></span></label>
+    </div>
+    <label class="field"><span>Pincodes per batch</span><input type="number" min="5" max="1000" step="5" name="batch_size" value="{{ s.batch_size }}"></label>
     {% if s.last_scheduled_run %}<p class="hint">{{ icon("clock", 13) }} Last automatic run: {{ s.last_scheduled_run }}</p>{% endif %}
+    <p class="hint">If Flipkart blocks a check, automatic checks pause for 24 hours.</p>
   </section>
 
   <section class="card panel">
@@ -38,7 +47,7 @@
       <label class="field"><span>Maximum (seconds)</span><input type="number" step="0.5" min="1" name="max_delay" value="{{ s.max_delay }}"></label>
     </div>
     <div class="estimate">{{ icon("gauge", 18) }}
-      <p><b>About {{ est_min }} min per full check</b><br><span class="muted">{{ n_prod }} products × {{ n_pin }} pincodes = {{ n_prod * n_pin }} checks</span></p>
+      <p><b>About {{ est_min|mins }} per full check</b><br><span class="muted">{{ n_prod }} products × {{ n_pin }} pincodes = {{ n_prod * n_pin }} checks</span></p>
     </div>
   </section>
 

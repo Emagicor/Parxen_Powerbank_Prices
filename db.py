@@ -62,6 +62,8 @@ DEFAULT_SETTINGS = {
     "last_scheduled_run": "",
     "min_delay": "2",          # seconds between product page loads
     "max_delay": "5",
+    "schedule_scope": "full",  # full = whole grid each time; batch = the N stalest pincodes
+    "batch_size": "100",       # pincodes per batch (about 1.5 min each with 8 products)
     "publish_mode": "off",     # off / git / vercel — how the read-only site gets updated
     "auto_publish": "1",       # publish after every check finishes
     "last_publish_at": "",
@@ -148,7 +150,8 @@ def init_db(seed=True):
         # v2 columns on pincodes (older databases don't have them yet)
         cols = {r["name"] for r in con.execute("PRAGMA table_info(pincodes)")}
         for col, ddl in (("state", "TEXT"), ("is_metro", "INTEGER NOT NULL DEFAULT 0"),
-                         ("is_capital", "INTEGER NOT NULL DEFAULT 0")):
+                         ("is_capital", "INTEGER NOT NULL DEFAULT 0"), ("district", "TEXT"),
+                         ("is_district", "INTEGER NOT NULL DEFAULT 0")):
             if col not in cols:
                 con.execute(f"ALTER TABLE pincodes ADD COLUMN {col} {ddl}")
         # Add / refresh the built-in city list once per seed version, so pincodes a
@@ -172,6 +175,40 @@ def init_db(seed=True):
         # A run left "running" means the app was closed mid-run.
         con.execute("UPDATE runs SET status='stopped', message='App was closed during the run' "
                     "WHERE status='running'")
+
+
+DISTRICT_CSV = Path(__file__).parent / "seed" / "district_hq_pincodes.csv"
+
+
+def district_rows():
+    """One representative pincode per district (India Post directory; see README)."""
+    import csv
+    with open(DISTRICT_CSV, encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def import_districts():
+    """Add every district pincode (or tag it if it is already in the list)."""
+    added = 0
+    with connect() as con:
+        for r in district_rows():
+            cur = con.execute(
+                "INSERT INTO pincodes(pincode, label, state, district, is_district, created_at) VALUES (?,?,?,?,1,?) "
+                "ON CONFLICT(pincode) DO UPDATE SET is_district=1, district=excluded.district, "
+                "label=COALESCE(pincodes.label, excluded.label), state=COALESCE(pincodes.state, excluded.state)",
+                (r["pincode"], r["district"], r["state"], r["district"], now()))
+            added += cur.rowcount
+    return len(district_rows())
+
+
+def remove_districts():
+    """Remove district pincodes again (metros, capitals and hand-added ones stay)."""
+    with connect() as con:
+        con.execute("DELETE FROM results WHERE pincode IN (SELECT pincode FROM pincodes "
+                    "WHERE is_district=1 AND is_metro=0 AND is_capital=0)")
+        n = con.execute("DELETE FROM pincodes WHERE is_district=1 AND is_metro=0 AND is_capital=0").rowcount
+        con.execute("UPDATE pincodes SET is_district=0")
+    return n
 
 
 KEEP_RUNS = 25          # job log length

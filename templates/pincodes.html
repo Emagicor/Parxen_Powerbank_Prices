@@ -6,7 +6,7 @@
   <div>
     <p class="eyebrow">Locations</p>
     <h1>Pincodes</h1>
-    <p class="sub">{{ items|selectattr('active')|list|length }} of {{ counts.all }} pincodes included in checks · {{ counts.metro }} metros · {{ counts.capital }} state capitals</p>
+    <p class="sub">{{ items|selectattr('active')|list|length }} of {{ counts.all }} pincodes included in checks · {{ counts.metro }} metros · {{ counts.capital }} state capitals{% if counts.district %} · {{ counts.district }} districts{% endif %}</p>
   </div>
 </header>
 
@@ -17,6 +17,7 @@
         <button class="on" data-f="all">All <span>{{ counts.all }}</span></button>
         <button data-f="metro">Metros <span>{{ counts.metro }}</span></button>
         <button data-f="capital">State capitals <span>{{ counts.capital }}</span></button>
+        {% if counts.district %}<button data-f="district">Districts <span>{{ counts.district }}</span></button>{% endif %}
         {% if counts.custom %}<button data-f="custom">Other <span>{{ counts.custom }}</span></button>{% endif %}
       </div>
       <label class="search">{{ icon("search", 15) }}<input type="search" id="pinFilter" placeholder="City, state or pincode" aria-label="Filter pincodes"></label>
@@ -27,14 +28,15 @@
       {% for p in items %}
         {% set c = cov.get(p.pincode) %}
         <tr class="{{ '' if p.active else 'is-off' }}"
-            data-kind="{{ 'metro ' if p.is_metro }}{{ 'capital ' if p.is_capital }}{{ 'custom' if not p.is_metro and not p.is_capital }}"
+            data-kind="{{ 'metro ' if p.is_metro }}{{ 'capital ' if p.is_capital }}{{ 'district ' if p.is_district }}{{ 'custom' if not (p.is_metro or p.is_capital or p.is_district) }}"
             data-key="{{ p.pincode }} {{ (p.label or '')|lower }} {{ (p.state or '')|lower }}">
           <td><span class="loc-city">{{ p.label or '—' }}</span><span class="loc-sub">{{ p.state or '' }}</span></td>
           <td class="mono">{{ p.pincode }}</td>
           <td class="tags">
             {% if p.is_metro %}<span class="badge b-metro">Metro</span>{% endif %}
             {% if p.is_capital %}<span class="badge b-capital">State capital</span>{% endif %}
-            {% if not p.is_metro and not p.is_capital %}<span class="badge b-off">Added</span>{% endif %}
+            {% if p.is_district %}<span class="badge b-off">District</span>{% endif %}
+            {% if not (p.is_metro or p.is_capital or p.is_district) %}<span class="badge b-off">Added</span>{% endif %}
             {% if not p.active %}<span class="badge b-off">Paused</span>{% endif %}
           </td>
           <td class="num">
@@ -65,6 +67,18 @@
       <p class="hint file-name">CSV columns: pincode, city, state</p>
       <button class="btn primary block">Add pincodes</button>
     </form>
+    <div class="district-box">
+      <h2>All-India districts</h2>
+      {% if counts.district %}
+        <p class="sub">{{ counts.district }} district pincodes are in the list. Check them in batches (Settings) so Flipkart sees a steady, modest pace.</p>
+        <form method="post" action="{{ url_for('pincodes_districts', action='remove') }}" onsubmit="return confirm('Remove the district pincodes and their results? Metros, capitals and pincodes you added stay.')">
+          <button class="btn ghost block">{{ icon("trash", 14) }} Remove district pincodes</button></form>
+      {% else %}
+        <p class="sub">Add one pincode for each of India's {{ counts.district_total }} districts (head post office where there is one), from India Post's directory.</p>
+        <form method="post" action="{{ url_for('pincodes_districts', action='add') }}">
+          <button class="btn block">{{ icon("plus", 14) }} Add {{ counts.district_total }} district pincodes</button></form>
+      {% endif %}
+    </div>
     {% if items %}
     <form method="post" action="{{ url_for('pincodes_delete_all') }}" onsubmit="return confirm('Remove all {{ items|length }} pincodes? This cannot be undone.')" class="danger-zone">
       <button class="btn ghost danger block">{{ icon("trash", 14) }} Remove all pincodes</button>

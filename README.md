@@ -23,7 +23,7 @@ Or from a terminal in this folder:
 | **Products** | Paste a Flipkart product link to add a new model. Rename inline, pause or remove listings. Every colour or variant is its own listing, so add the exact link you sell. |
 | **Pincodes** | Comes preloaded with 8 major metros + all 28 state capitals (30 pincodes; Chandigarh serves Punjab & Haryana). Paste more (`pincode, city, state`) or upload a CSV. |
 | **History** | A log of recent jobs (full checks and re-checks). Only the latest result per cell is kept, so there is no archive of old runs. |
-| **Settings** | Daily or weekly automatic checks, the pace, and how the hosted read-only site is published. |
+| **Settings** | Daily or weekly automatic checks, whether each covers every pincode or a rolling batch, the pace, and how the hosted read-only site is published. |
 | **Hosted view** | Opens the read-only page exactly as your team sees it on Vercel. |
 
 The app opens in day (light) mode. The button at the bottom of the sidebar switches to dark mode, and the choice is remembered per browser.
@@ -52,6 +52,31 @@ That works out to about **1 minute per pincode for 7 products**. Rough run times
 - 500 pincodes: about 8 hours
 
 Everything is stored in `data/parxen.db` (SQLite).
+
+## All-India districts and rolling batches
+
+**Pincodes → Add 730 district pincodes** adds one pincode per district, taken from India Post's
+All India Pincode Directory (`seed/district_hq_pincodes.csv`):
+
+- the district's head post office whose name matches the district (365 districts)
+- else a sub-office named after the district (180)
+- else another head office in the district (100)
+- else the pincode with the most post offices (92)
+
+The last two are approximate. Edit the CSV or the Pincodes page if a district should use a different town.
+Delhi's 11 districts each get their own pincode.
+
+A full check of about 750 pincodes takes roughly 18 hours and loads about 6,800 Flipkart pages, so don't do
+that in one go. Instead, set **Settings → Each automatic check covers → A rolling batch**:
+
+- each scheduled run checks the N pincodes that need it most: never checked first, then the oldest results
+- with 100 per night (about 2.5 hours), every district is refreshed about every 8 days
+- **Next batch** on the Overview runs one batch by hand
+- the Overview shows how many pincodes were checked in the last 7 days
+
+If Flipkart blocks a check, automatic checks pause for 24 hours. Batches of more than about 150 a day
+from one internet connection raise the chance of captchas, and the block would hit everyone in the office
+using Flipkart, so increase the batch size slowly.
 
 ## Running it when the app is closed (Windows Task Scheduler)
 

@@ -404,3 +404,6 @@ input:focus, select:focus, textarea:focus { outline: 0; border-color: var(--acce
   .kpi-foot { font-size: 12px; }
   .tbl th:nth-child(2), .tbl td:nth-child(2) { display: none; }
 }
+
+.district-box { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.district-box h2 { margin: 0; }

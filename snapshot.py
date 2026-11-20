@@ -17,7 +17,7 @@ STATUS_LABEL = {
     "UNKNOWN": "Unclear",
     "ERROR": "Error",
 }
-PIN_ORDER = "ORDER BY is_metro DESC, state COLLATE NOCASE, label COLLATE NOCASE, pincode"
+PIN_ORDER = "ORDER BY is_metro DESC, is_capital DESC, state COLLATE NOCASE, label COLLATE NOCASE, pincode"
 
 
 def pct(n, d):
@@ -37,7 +37,8 @@ def build():
     rows = [r for r in rows if r["product_id"] in pids and r["pincode"] in pinset]
     cells = {(r["pincode"], r["product_id"]): r for r in rows}
     pin_info = {r["pincode"]: {"city": r["label"] or "", "state": r["state"] or "",
-                               "metro": bool(r["is_metro"]), "capital": bool(r["is_capital"])} for r in pin_rows}
+                               "metro": bool(r["is_metro"]), "capital": bool(r["is_capital"]),
+                               "district": bool(r["is_district"])} for r in pin_rows}
 
     counts = {k: 0 for k in STATUS_LABEL}
     for r in rows:
@@ -60,10 +61,34 @@ def build():
         "issues": counts["ERROR"] + counts["UNKNOWN"], "oos": counts["OUT_OF_STOCK"],
         "missing": len(pins) * len(products) - checked,
         "newest": stamps[-1] if stamps else None, "oldest": stamps[0] if stamps else None,
+        "fresh_pins": sum(1 for p in pins if products and all(
+            (p, q) in cells and cells[(p, q)]["checked_at"] >= _days_ago(7) for q, _, _ in products)),
     }
     return {"products": [(q, n) for q, n, _ in products], "urls": {q: u for q, _, u in products},
             "pins": pins, "pin_info": pin_info, "cells": cells, "counts": counts,
             "row_ok": row_ok, "col_ok": col_ok, "rows": rows, "by_product": by_product, "kpi": kpi}
+
+
+def _days_ago(n):
+    from datetime import datetime, timedelta
+    return (datetime.now() - timedelta(days=n)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def next_batch(n):
+    """The `n` active pincodes most in need of a check: never-checked cells first,
+    then the oldest results. Returns [(pincode, product_id), ...] for every active product."""
+    data = build()
+    pids = [q for q, _ in data["products"]]
+    if not pids:
+        return [], 0
+    order = {p: i for i, p in enumerate(data["pins"])}
+
+    def staleness(p):
+        stamps = [data["cells"][(p, q)]["checked_at"] for q in pids if (p, q) in data["cells"]]
+        missing = len(stamps) < len(pids)
+        return (0 if missing else 1, min(stamps) if stamps else "", order[p])
+    pins = sorted(data["pins"], key=staleness)[:max(1, int(n))]
+    return [(p, q) for p in pins for q in pids], len(pins)
 
 
 def workbook_bytes(data):
@@ -80,7 +105,8 @@ def workbook_bytes(data):
     ws.row_dimensions[1].height = 42
     for pin in data["pins"]:
         info = data["pin_info"][pin]
-        kind = " & ".join(k for k, v in (("Metro", info["metro"]), ("State capital", info["capital"])) if v) or "Other"
+        kind = " & ".join(k for k, v in (("Metro", info["metro"]), ("State capital", info["capital"]),
+                                         ("District", info["district"])) if v) or "Other"
         line = [pin, info["city"], info["state"], kind]
         for pid, _ in data["products"]:
             cell = data["cells"].get((pin, pid))

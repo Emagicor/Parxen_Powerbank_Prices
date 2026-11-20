@@ -55,7 +55,8 @@
     const stamp = (d.generated_at || '').slice(0, 10);
     const byProduct = [...d.products].sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name));
     const cMetro = pins.filter(p => p.metro).length, cCap = pins.filter(p => p.capital).length;
-    const cOther = pins.filter(p => !p.metro && !p.capital).length;
+    const cDist = pins.filter(p => p.district).length;
+    const cOther = pins.filter(p => !p.metro && !p.capital && !p.district).length;
 
     const head = d.products.map(p => `
       <th scope="col"><div class="th-wrap"><span>
@@ -64,7 +65,8 @@
 
     const body = pins.map(p => {
       const row = d.cells[p.pin] || {};
-      const kind = (p.metro ? 'metro ' : '') + (p.capital ? 'capital ' : '') + (!p.metro && !p.capital ? 'custom' : '');
+      const kind = (p.metro ? 'metro ' : '') + (p.capital ? 'capital ' : '') + (p.district ? 'district ' : '')
+        + (!p.metro && !p.capital && !p.district ? 'custom' : '');
       const cells = d.products.map(prod => {
         const c = row[String(prod.id)];
         if (!c) return '<td class="cell pending" title="Not checked yet"><span class="dots" aria-label="Not checked yet"></span></td>';
@@ -85,7 +87,7 @@
         <div>
           <p class="eyebrow">Latest results</p>
           <h1>Delivery coverage</h1>
-          <p class="sub">Updated ${when(k.newest)}${k.oldest && k.newest && k.oldest.slice(0, 10) !== k.newest.slice(0, 10) ? ` · oldest result ${when(k.oldest)}` : ''}
+          <p class="sub">${k.fresh_pins ?? ''}${k.fresh_pins != null ? `/${k.n_pins} pincodes checked in the last 7 days · ` : ''}Updated ${when(k.newest)}${k.oldest && k.newest && k.oldest.slice(0, 10) !== k.newest.slice(0, 10) ? ` · oldest result ${when(k.oldest)}` : ''}
             · ${n} products × ${pins.length} pincodes</p>
         </div>
         <div class="head-actions">
@@ -132,6 +134,7 @@
             <button class="on" data-f="all">All <span>${pins.length}</span></button>
             <button data-f="metro">Metros <span>${cMetro}</span></button>
             <button data-f="capital">State capitals <span>${cCap}</span></button>
+            ${cDist ? `<button data-f="district">Districts <span>${cDist}</span></button>` : ''}
             ${cOther ? `<button data-f="custom">Other <span>${cOther}</span></button>` : ''}
           </div>
           <div class="toolbar-right">

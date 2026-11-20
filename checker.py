@@ -198,7 +198,7 @@ def _stop_requested(run_id):
         return con.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()["status"] == "stopping"
 
 
-PIN_ORDER = "ORDER BY is_metro DESC, state COLLATE NOCASE, label COLLATE NOCASE, pincode"
+from snapshot import PIN_ORDER  # noqa: E402  (same pincode order everywhere)
 
 
 def full_plan():

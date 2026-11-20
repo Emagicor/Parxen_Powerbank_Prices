@@ -22,7 +22,7 @@
       <p class="eyebrow">Overview · latest results</p>
       <h1>Delivery coverage</h1>
       <p class="sub">
-        {% if k.newest %}Updated {{ k.newest|when }}{% if k.oldest and k.oldest[:10] != k.newest[:10] %} · oldest result {{ k.oldest|when }}{% endif %}{% endif %}
+        {% if k.newest %}{{ k.fresh_pins }}/{{ k.n_pins }} pincodes checked in the last 7 days · updated {{ k.newest|when }}{% if k.oldest and k.oldest[:10] != k.newest[:10] %} · oldest result {{ k.oldest|when }}{% endif %}{% endif %}
         {% if last and not live %} · last job: {{ last.message or last.trigger|capitalize }}
           <span class="badge b-{{ last.status }}">{{ last.status|capitalize }}</span>{% endif %}
       </p>
@@ -35,15 +35,19 @@
         <form method="post" action="{{ url_for('recheck') }}"><input type="hidden" name="scope" value="errors">
           <button class="btn" title="Re-check only the cells that failed">{{ icon("refresh", 15) }} Retry {{ n_err }} error{{ 's' if n_err != 1 }}</button></form>
       {% endif %}
-      {% if can_recheck and n_missing > 0 %}
+      {% if can_recheck and n_missing > 0 and k.n_pins <= batch_size %}
         <form method="post" action="{{ url_for('recheck') }}"><input type="hidden" name="scope" value="missing">
-          <button class="btn" title="Check the cells that have never been checked">{{ icon("play", 12) }} Check {{ n_missing }} unchecked</button></form>
+          <button class="btn" title="Check cells that have never been checked, up to {{ batch_size }} pincodes at a time">{{ icon("play", 12) }} Check unchecked</button></form>
+      {% endif %}
+      {% if can_recheck and k.n_pins > batch_size %}
+        <form method="post" action="{{ url_for('recheck') }}"><input type="hidden" name="scope" value="batch">
+          <button class="btn" title="Check the {{ batch_size }} pincodes that need it most: never checked first, then the oldest results">{{ icon("refresh", 15) }} Next batch ({{ batch_size }})</button></form>
       {% endif %}
       <a class="btn" href="{{ url_for('export') }}">{{ icon("download", 16) }} Export Excel</a>
       {% if live %}
         <form method="post" action="{{ url_for('run_stop', run_id=run.id) }}"><button class="btn">{{ icon("stop", 12) }} Stop check</button></form>
       {% else %}
-        <form method="post" action="{{ url_for('run_start') }}"><button class="btn primary">{{ icon("play", 13) }} Run full check</button></form>
+        <form method="post" action="{{ url_for('run_start') }}"{% if k.n_pins > batch_size %} onsubmit="return confirm('A full check of {{ k.n_pins }} pincodes takes about {{ (k.n_pins * 1.5 / 60)|round|int }} hours and loads a lot of Flipkart pages in one go. Batches are gentler. Run the full check anyway?')"{% endif %}><button class="btn primary">{{ icon("play", 13) }} Run full check</button></form>
       {% endif %}
     </div>
   </header>
@@ -112,10 +116,12 @@
       <div class="seg" role="tablist" aria-label="Filter pincodes">
         {% set c_metro = data.pin_info.values()|selectattr('metro')|list|length %}
         {% set c_cap = data.pin_info.values()|selectattr('capital')|list|length %}
-        {% set c_custom = data.pin_info.values()|rejectattr('metro')|rejectattr('capital')|list|length %}
+        {% set c_dist = data.pin_info.values()|selectattr('district')|list|length %}
+        {% set c_custom = data.pin_info.values()|rejectattr('metro')|rejectattr('capital')|rejectattr('district')|list|length %}
         <button class="on" data-f="all">All <span>{{ data.pins|length }}</span></button>
         <button data-f="metro">Metros <span>{{ c_metro }}</span></button>
         <button data-f="capital">State capitals <span>{{ c_cap }}</span></button>
+        {% if c_dist %}<button data-f="district">Districts <span>{{ c_dist }}</span></button>{% endif %}
         {% if c_custom %}<button data-f="custom">Other <span>{{ c_custom }}</span></button>{% endif %}
       </div>
       <div class="toolbar-right">
@@ -148,7 +154,7 @@
         {% for pin in data.pins %}
           {% set ok = data.row_ok[pin] %}{% set info = data.pin_info[pin] %}{% set n = data.products|length %}
           <tr data-gap="{{ 1 if ok < n else 0 }}"
-              data-kind="{{ 'metro ' if info.metro }}{{ 'capital ' if info.capital }}{{ 'custom' if not info.metro and not info.capital }}"
+              data-kind="{{ 'metro ' if info.metro }}{{ 'capital ' if info.capital }}{{ 'district ' if info.district }}{{ 'custom' if not (info.metro or info.capital or info.district) }}"
               data-key="{{ pin }} {{ info.city|lower }} {{ info.state|lower }}">
             <th class="sticky-col" scope="row">
               <div class="th-wrap">
