@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Schedule{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><p class="eyebrow">Automation</p><h1>Schedule</h1>
+  <p class="sub">Automatic checks run while this app is open on this computer. To run with the app closed, use Windows Task Scheduler (see README).</p></div>
+</header>
+
+<form method="post" class="settings-grid">
+  <section class="card panel">
+    <h2>Automatic check</h2>
+    <div class="choice-list">
+      <label class="choice"><input type="radio" name="schedule" value="off" {{ 'checked' if s.schedule == 'off' }}>
+        <span><b>Off</b><small>Only when someone clicks "Run full check"</small></span></label>
+      <label class="choice"><input type="radio" name="schedule" value="daily" {{ 'checked' if s.schedule == 'daily' }}>
+        <span><b>Every day</b><small>Fresh numbers each morning</small></span></label>
+      <label class="choice"><input type="radio" name="schedule" value="weekly" {{ 'checked' if s.schedule == 'weekly' }}>
+        <span><b>Once a week</b><small>Lighter on Flipkart; good for trend tracking</small></span></label>
+    </div>
+    <div class="field-row">
+      <label class="field"><span>Day (weekly)</span>
+        <select name="schedule_weekday">
+          {% for d in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+            <option value="{{ loop.index0 }}" {{ 'selected' if s.schedule_weekday|int == loop.index0 }}>{{ d }}</option>
+          {% endfor %}
+        </select></label>
+      <label class="field"><span>Time</span><input type="time" name="schedule_time" value="{{ s.schedule_time }}"></label>
+    </div>
+    {% if s.last_scheduled_run %}<p class="hint">{{ icon("clock", 13) }} Last automatic run: {{ s.last_scheduled_run }}</p>{% endif %}
+  </section>
+
+  <section class="card panel">
+    <h2>Pace</h2>
+    <p class="sub">Random pause between product pages. Slower is gentler on Flipkart and less likely to be blocked.</p>
+    <div class="field-row">
+      <label class="field"><span>Minimum (seconds)</span><input type="number" step="0.5" min="1" name="min_delay" value="{{ s.min_delay }}"></label>
+      <label class="field"><span>Maximum (seconds)</span><input type="number" step="0.5" min="1" name="max_delay" value="{{ s.max_delay }}"></label>
+    </div>
+    <div class="estimate">{{ icon("gauge", 18) }}
+      <p><b>About {{ est_min }} min per full check</b><br><span class="muted">{{ n_prod }} products × {{ n_pin }} pincodes = {{ n_prod * n_pin }} checks</span></p>
+    </div>
+  </section>
+
+  <section class="card panel">
+    <h2>Hosted read-only site</h2>
+    <p class="sub">After each check, the latest results are written to the <span class="mono">site</span> folder and pushed out.
+      The hosted page only shows the report, search and the Excel download. Nothing can be changed from it.</p>
+    <div class="choice-list">
+      <label class="choice"><input type="radio" name="publish_mode" value="off" {{ 'checked' if s.publish_mode == 'off' }}>
+        <span><b>Off</b><small>Only update the files on this computer</small></span></label>
+      <label class="choice"><input type="radio" name="publish_mode" value="git" {{ 'checked' if s.publish_mode == 'git' }}>
+        <span><b>Git push</b><small>Commit the site folder and push; Vercel deploys it automatically</small></span></label>
+      <label class="choice"><input type="radio" name="publish_mode" value="vercel" {{ 'checked' if s.publish_mode == 'vercel' }}>
+        <span><b>Vercel CLI</b><small>Run "vercel deploy --prod" in the site folder</small></span></label>
+    </div>
+    <label class="switch"><input type="checkbox" name="auto_publish" value="1" {{ 'checked' if s.auto_publish == '1' }}><span class="sw"></span>Publish automatically after every check</label>
+    {% if s.last_publish_at %}<p class="hint {{ 'warn-text' if s.last_publish_msg.startswith('Failed') }}">{{ icon("clock", 13) }} Last publish {{ s.last_publish_at|when }}: {{ s.last_publish_msg }}</p>{% endif %}
+  </section>
+
+  <div class="form-foot">
+    <button class="btn" type="submit" form="pubForm">{{ icon("upload", 15) }} Publish now</button>
+    <button class="btn primary">Save settings</button>
+  </div>
+</form>
+<form id="pubForm" method="post" action="{{ url_for('publish_now') }}"></form>
+{% endblock %}

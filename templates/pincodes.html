@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Pincodes{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <p class="eyebrow">Locations</p>
+    <h1>Pincodes</h1>
+    <p class="sub">{{ items|selectattr('active')|list|length }} of {{ counts.all }} pincodes included in checks · {{ counts.metro }} metros · {{ counts.capital }} state capitals</p>
+  </div>
+</header>
+
+<div class="split">
+  <section class="card table-card">
+    <div class="toolbar pad">
+      <div class="seg" role="tablist" aria-label="Filter pincodes">
+        <button class="on" data-f="all">All <span>{{ counts.all }}</span></button>
+        <button data-f="metro">Metros <span>{{ counts.metro }}</span></button>
+        <button data-f="capital">State capitals <span>{{ counts.capital }}</span></button>
+        {% if counts.custom %}<button data-f="custom">Other <span>{{ counts.custom }}</span></button>{% endif %}
+      </div>
+      <label class="search">{{ icon("search", 15) }}<input type="search" id="pinFilter" placeholder="City, state or pincode" aria-label="Filter pincodes"></label>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Location</th><th>Pincode</th><th>Type</th><th class="num">Last coverage</th><th class="actions-col"><span class="sr">Actions</span></th></tr></thead>
+      <tbody>
+      {% for p in items %}
+        {% set c = cov.get(p.pincode) %}
+        <tr class="{{ '' if p.active else 'is-off' }}"
+            data-kind="{{ 'metro ' if p.is_metro }}{{ 'capital ' if p.is_capital }}{{ 'custom' if not p.is_metro and not p.is_capital }}"
+            data-key="{{ p.pincode }} {{ (p.label or '')|lower }} {{ (p.state or '')|lower }}">
+          <td><span class="loc-city">{{ p.label or '—' }}</span><span class="loc-sub">{{ p.state or '' }}</span></td>
+          <td class="mono">{{ p.pincode }}</td>
+          <td class="tags">
+            {% if p.is_metro %}<span class="badge b-metro">Metro</span>{% endif %}
+            {% if p.is_capital %}<span class="badge b-capital">State capital</span>{% endif %}
+            {% if not p.is_metro and not p.is_capital %}<span class="badge b-off">Added</span>{% endif %}
+            {% if not p.active %}<span class="badge b-off">Paused</span>{% endif %}
+          </td>
+          <td class="num">
+            {% if c %}<span class="cov-inline"><span class="cov-bar"><span style="width: {{ (100 * c.ok / c.n) if c.n else 0 }}%"></span></span><b>{{ c.ok }}/{{ c.n }}</b></span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('pincode_action', pid=p.id, action='toggle') }}">
+              <button class="icon-btn" title="{{ 'Pause — skip in checks' if p.active else 'Resume' }}">{{ icon("pause" if p.active else "resume", 15) }}</button></form>
+            <form method="post" action="{{ url_for('pincode_action', pid=p.id, action='delete') }}">
+              <button class="icon-btn danger" title="Remove">{{ icon("trash", 15) }}</button></form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-row">No pincodes yet. Add some on the right.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="no-rows" hidden>No pincodes match this filter.</p>
+  </section>
+
+  <aside class="card side-card">
+    <h2>Add pincodes</h2>
+    <p class="sub">One per line. Optionally add the city and state after commas.</p>
+    <form method="post" enctype="multipart/form-data" class="stack">
+      <textarea name="bulk" rows="7" placeholder="122001, Gurugram, Haryana&#10;560034, Koramangala, Karnataka&#10;411014"></textarea>
+      <label class="file">{{ icon("upload", 15) }}<span>Upload CSV</span><input type="file" name="csv" accept=".csv,text/csv"></label>
+      <p class="hint file-name">CSV columns: pincode, city, state</p>
+      <button class="btn primary block">Add pincodes</button>
+    </form>
+    {% if items %}
+    <form method="post" action="{{ url_for('pincodes_delete_all') }}" onsubmit="return confirm('Remove all {{ items|length }} pincodes? This cannot be undone.')" class="danger-zone">
+      <button class="btn ghost danger block">{{ icon("trash", 14) }} Remove all pincodes</button>
+    </form>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const rows = [...document.querySelectorAll('.tbl tbody tr[data-kind]')];
+  const segs = [...document.querySelectorAll('.seg button')];
+  const q = document.getElementById('pinFilter'), none = document.querySelector('.no-rows');
+  let kind = 'all';
+  function apply() {
+    const term = (q.value || '').trim().toLowerCase(); let shown = 0;
+    rows.forEach(tr => {
+      const hide = (kind !== 'all' && !tr.dataset.kind.includes(kind)) || (term && !tr.dataset.key.includes(term));
+      tr.hidden = hide; if (!hide) shown++;
+    });
+    segs.forEach(b => b.classList.toggle('on', b.dataset.f === kind));
+    none.hidden = shown > 0 || !rows.length;
+  }
+  segs.forEach(b => b.addEventListener('click', () => { kind = b.dataset.f; apply(); }));
+  q.addEventListener('input', apply);
+  const file = document.querySelector('.file input'), fname = document.querySelector('.file-name');
+  file.addEventListener('change', () => { if (file.files[0]) fname.textContent = 'Selected: ' + file.files[0].name; });
+})();
+</script>
+{% endblock %}

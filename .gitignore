@@ -1,0 +1,7 @@
+# local-only: the database, screenshots and the Python environment never leave this PC
+.venv/
+/data/
+__pycache__/
+*.pyc
+.claude/
+site/.vercel/

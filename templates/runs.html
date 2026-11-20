@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}History{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div><p class="eyebrow">Job log</p><h1>History</h1>
+    <p class="sub">Recent checks and re-checks. Only the latest result for each product × pincode is kept, so this is a log, not an archive.</p></div>
+</header>
+<section class="card table-card">
+  <table class="tbl">
+    <thead><tr><th>Job</th><th>Started</th><th>Duration</th><th>What</th><th>Status</th><th class="num">Checks</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="mono">#{{ r.id }}</td>
+        <td>{{ r.started_at|when }}</td>
+        <td>{{ r.duration or ('in progress' if r.status in ('running','stopping') else '—') }}</td>
+        <td>{{ r.trigger|capitalize }}{% if r.message and r.status == 'done' %}<span class="loc-sub">{{ r.message }}</span>{% endif %}</td>
+        <td><span class="badge b-{{ r.status }}">{{ r.status|capitalize }}</span>{% if r.message and r.status != 'done' %}<span class="loc-sub">{{ r.message }}</span>{% endif %}</td>
+        <td class="num">{{ r.done }}/{{ r.total }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-row">No checks yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

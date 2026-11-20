@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, status_cell %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+{% set k = data.kpi %}
+{% if not k.checked and not run %}
+  <header class="page-head">
+    <div><p class="eyebrow">Overview</p><h1>Delivery coverage</h1></div>
+  </header>
+  <section class="empty card">
+    <div class="empty-ico">{{ icon("pin", 28) }}</div>
+    <h2>No checks yet</h2>
+    <p>{{ k.n_products }} products × {{ k.n_pins }} pincodes are ready. A check opens each product on Flipkart,
+       sets each pincode as the delivery location, and records what Flipkart shows.</p>
+    <form method="post" action="{{ url_for('run_start') }}"><button class="btn primary lg">{{ icon("play", 14) }} Run first check</button></form>
+  </section>
+{% else %}
+  {% set live = run is not none %}
+  {% set can_recheck = not live %}
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Overview · latest results</p>
+      <h1>Delivery coverage</h1>
+      <p class="sub">
+        {% if k.newest %}Updated {{ k.newest|when }}{% if k.oldest and k.oldest[:10] != k.newest[:10] %} · oldest result {{ k.oldest|when }}{% endif %}{% endif %}
+        {% if last and not live %} · last job: {{ last.message or last.trigger|capitalize }}
+          <span class="badge b-{{ last.status }}">{{ last.status|capitalize }}</span>{% endif %}
+      </p>
+      {% if last and not live and last.status in ('failed', 'stopped') and last.message %}
+        <p class="sub {{ 'danger-text' if last.status == 'failed' else 'warn-text' }}">{{ last.message }}</p>{% endif %}
+    </div>
+    {% set n_err = k.issues %}{% set n_missing = k.missing %}
+    <div class="head-actions">
+      {% if can_recheck and n_err %}
+        <form method="post" action="{{ url_for('recheck') }}"><input type="hidden" name="scope" value="errors">
+          <button class="btn" title="Re-check only the cells that failed">{{ icon("refresh", 15) }} Retry {{ n_err }} error{{ 's' if n_err != 1 }}</button></form>
+      {% endif %}
+      {% if can_recheck and n_missing > 0 %}
+        <form method="post" action="{{ url_for('recheck') }}"><input type="hidden" name="scope" value="missing">
+          <button class="btn" title="Check the cells that have never been checked">{{ icon("play", 12) }} Check {{ n_missing }} unchecked</button></form>
+      {% endif %}
+      <a class="btn" href="{{ url_for('export') }}">{{ icon("download", 16) }} Export Excel</a>
+      {% if live %}
+        <form method="post" action="{{ url_for('run_stop', run_id=run.id) }}"><button class="btn">{{ icon("stop", 12) }} Stop check</button></form>
+      {% else %}
+        <form method="post" action="{{ url_for('run_start') }}"><button class="btn primary">{{ icon("play", 13) }} Run full check</button></form>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if live %}
+    <section class="card progress" data-run="{{ run.id }}" data-done="{{ run.done }}" data-total="{{ run.total }}" data-started="{{ run.started_at }}">
+      <div class="progress-top">
+        <span class="live-label"><span class="pulse"></span>{{ run.message or 'Checking Flipkart' }}…</span>
+        <span class="mono"><b class="p-done">{{ run.done }}</b> / {{ run.total }} checks · <span class="p-eta">estimating time left</span></span>
+      </div>
+      <div class="bar"><span style="width: {{ (100 * run.done / run.total) if run.total else 0 }}%"></span></div>
+      <p class="hint">You can leave this page. Cells update below as each pincode finishes.</p>
+    </section>
+  {% endif %}
+
+  <section class="kpis">
+    <article class="card kpi">
+      <p class="kpi-label">Overall coverage</p>
+      <p class="kpi-value">{{ k.coverage }}<small>%</small></p>
+      <div class="meter" role="img" aria-label="{{ k.coverage }} percent"><span style="width: {{ k.coverage }}%"></span></div>
+      <p class="kpi-foot">{{ k.ok }} of {{ k.checked }} product–pincode checks deliverable</p>
+    </article>
+    <article class="card kpi">
+      <p class="kpi-label">Fully covered pincodes</p>
+      <p class="kpi-value">{{ k.full_pins }}<small> / {{ k.n_pins }}</small></p>
+      <p class="kpi-foot">Every product deliverable</p>
+    </article>
+    <article class="card kpi">
+      <p class="kpi-label">Pincodes with no coverage</p>
+      <p class="kpi-value {{ 'danger-text' if k.zero_pins }}">{{ k.zero_pins }}<small> / {{ k.n_pins }}</small></p>
+      <p class="kpi-foot">No product deliverable</p>
+    </article>
+    <article class="card kpi">
+      <p class="kpi-label">Check health</p>
+      <p class="kpi-value {{ 'warn-text' if k.issues }}">{{ k.issues }}<small> {{ 'error' if k.issues == 1 else 'errors' }}</small></p>
+      <p class="kpi-foot">{{ k.oos }} out of stock · {{ k.checked }} checked</p>
+    </article>
+  </section>
+
+  <section class="card panel">
+    <div class="panel-head">
+      <div><h2>Coverage by product</h2><p class="sub">Share of checked pincodes where Flipkart offers delivery</p></div>
+    </div>
+    <ul class="hbars">
+      {% for p in data.by_product %}
+        <li title="{{ p.name }}: deliverable to {{ p.ok }} of {{ p.n }} pincodes ({{ p.pct }}%)">
+          <span class="hb-name">{{ p.name }}</span>
+          <span class="hb-track"><span class="hb-fill" style="width: {{ p.pct }}%"></span></span>
+          <span class="hb-val"><b>{{ p.pct }}%</b> <span>{{ p.ok }}/{{ p.n }}</span></span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card panel grid-panel">
+    <div class="panel-head">
+      <div><h2>Pincode × product</h2><p class="sub">What Flipkart showed for each listing at each delivery location</p></div>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="st ok">{{ icon("check", 13) }}</span>Deliverable (by date)</li>
+        <li><span class="st no">{{ icon("x", 13) }}</span>Not deliverable</li>
+        <li><span class="st warn">{{ icon("alert", 13) }}</span>Out of stock</li>
+        <li><span class="st err">{{ icon("help", 13) }}</span>Check failed</li>
+      </ul>
+    </div>
+    <div class="toolbar">
+      <div class="seg" role="tablist" aria-label="Filter pincodes">
+        {% set c_metro = data.pin_info.values()|selectattr('metro')|list|length %}
+        {% set c_cap = data.pin_info.values()|selectattr('capital')|list|length %}
+        {% set c_custom = data.pin_info.values()|rejectattr('metro')|rejectattr('capital')|list|length %}
+        <button class="on" data-f="all">All <span>{{ data.pins|length }}</span></button>
+        <button data-f="metro">Metros <span>{{ c_metro }}</span></button>
+        <button data-f="capital">State capitals <span>{{ c_cap }}</span></button>
+        {% if c_custom %}<button data-f="custom">Other <span>{{ c_custom }}</span></button>{% endif %}
+      </div>
+      <div class="toolbar-right">
+        <label class="switch"><input type="checkbox" id="gapsOnly"><span class="sw"></span>Gaps only</label>
+        <label class="search">{{ icon("search", 15) }}<input type="search" id="pinFilter" placeholder="City, state or pincode" aria-label="Filter pincodes"></label>
+      </div>
+    </div>
+    <div class="matrix-wrap">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="sticky-col" scope="col">Location</th>
+            {% for pid, name in data.products %}
+              <th scope="col">
+                <div class="th-wrap">
+                  <span><span class="th-name">{{ name }}</span><span class="th-sub">{{ data.col_ok[pid] }}/{{ data.pins|length }} pincodes</span></span>
+                  {% if can_recheck %}
+                  <form method="post" action="{{ url_for('recheck') }}" class="rc">
+                    <input type="hidden" name="scope" value="product"><input type="hidden" name="product_id" value="{{ pid }}">
+                    <button class="rc-btn" title="Re-check {{ name }} at all {{ data.pins|length }} pincodes" aria-label="Re-check {{ name }} at all pincodes">{{ icon("refresh", 13) }}</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </th>
+            {% endfor %}
+            <th scope="col" class="num">Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for pin in data.pins %}
+          {% set ok = data.row_ok[pin] %}{% set info = data.pin_info[pin] %}{% set n = data.products|length %}
+          <tr data-gap="{{ 1 if ok < n else 0 }}"
+              data-kind="{{ 'metro ' if info.metro }}{{ 'capital ' if info.capital }}{{ 'custom' if not info.metro and not info.capital }}"
+              data-key="{{ pin }} {{ info.city|lower }} {{ info.state|lower }}">
+            <th class="sticky-col" scope="row">
+              <div class="th-wrap">
+                <span>
+                  <span class="loc-city">{{ info.city or pin }}</span>
+                  <span class="loc-sub"><span class="mono">{{ pin }}</span>{% if info.state %} · {{ info.state }}{% endif %}</span>
+                </span>
+                {% if can_recheck %}
+                <form method="post" action="{{ url_for('recheck') }}" class="rc">
+                  <input type="hidden" name="scope" value="pin"><input type="hidden" name="pincode" value="{{ pin }}">
+                  <button class="rc-btn" title="Re-check {{ info.city or pin }} for all {{ n }} products" aria-label="Re-check {{ info.city or pin }} for all products">{{ icon("refresh", 13) }}</button>
+                </form>
+                {% endif %}
+              </div>
+            </th>
+            {% for pid, name in data.products %}
+              {% set c = data.cells.get((pin, pid)) %}
+              {% if c %}
+                <td class="cell" title="{{ name }} → {{ info.city or pin }}: {{ STATUS_LABEL.get(c.status) }}{% if c.delivery_text %} ({{ c.delivery_text }}){% endif %}{% if c.location_text %} · {{ c.location_text }}{% endif %}{% if c.error %} · {{ c.error }}{% endif %} · checked {{ c.checked_at|when }}">{{ status_cell(c) }}</td>
+              {% else %}
+                <td class="cell pending" title="Not checked yet"><span class="dots" aria-label="Not checked yet"></span></td>
+              {% endif %}
+            {% endfor %}
+            <td class="num cov">
+              <span class="cov-txt {{ 'full' if ok == n else ('none' if ok == 0 else '') }}">{{ ok }}/{{ n }}</span>
+              <span class="cov-bar"><span style="width: {{ (100 * ok / n) if n else 0 }}%"></span></span>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="no-rows" hidden>No pincodes match this filter.</p>
+    </div>
+    <p class="hint">Hover a cell for the exact text and the address Flipkart resolved the pincode to.</p>
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const rows = [...document.querySelectorAll('.matrix tbody tr')];
+  const gaps = document.getElementById('gapsOnly');
+  const q = document.getElementById('pinFilter');
+  const segs = [...document.querySelectorAll('.seg button')];
+  const none = document.querySelector('.no-rows');
+  let kind = 'all';
+  try { kind = sessionStorage.getItem('pinKind') || 'all'; if (gaps) gaps.checked = sessionStorage.getItem('gapsOnly') === '1'; } catch (e) {}
+  if (!segs.some(b => b.dataset.f === kind)) kind = 'all';
+  function apply() {
+    const term = (q && q.value || '').trim().toLowerCase();
+    let shown = 0;
+    rows.forEach(tr => {
+      const hide = (kind !== 'all' && !tr.dataset.kind.includes(kind))
+        || (gaps && gaps.checked && tr.dataset.gap !== '1')
+        || (term && !tr.dataset.key.includes(term));
+      tr.hidden = hide; if (!hide) shown++;
+    });
+    segs.forEach(b => { b.classList.toggle('on', b.dataset.f === kind); b.setAttribute('aria-selected', b.dataset.f === kind); });
+    if (none) none.hidden = shown > 0;
+    try { sessionStorage.setItem('pinKind', kind); sessionStorage.setItem('gapsOnly', gaps && gaps.checked ? '1' : '0'); } catch (e) {}
+  }
+  segs.forEach(b => b.addEventListener('click', () => { kind = b.dataset.f; apply(); }));
+  if (gaps) gaps.addEventListener('change', apply);
+  if (q) q.addEventListener('input', apply);
+  apply();
+
+  const prog = document.querySelector('.progress');
+  if (prog) {
+    const id = prog.dataset.run, total = +prog.dataset.total;
+    const eta = prog.querySelector('.p-eta');
+    // Estimate from the pace observed in this tab (works for full runs and re-checks alike).
+    const KEY = 'eta-' + id;
+    let base = null;
+    try { base = JSON.parse(sessionStorage.getItem(KEY)); } catch (e) {}
+    if (!base || base.done > +prog.dataset.done) base = { t: Date.now(), done: +prog.dataset.done };
+    try { sessionStorage.setItem(KEY, JSON.stringify(base)); } catch (e) {}
+    function showEta(done) {
+      const n = done - base.done;
+      if (n <= 0) return;
+      const per = (Date.now() - base.t) / n, left = Math.max(0, (total - done) * per / 60000);
+      eta.textContent = left < 1 ? 'under a minute left' : `about ${Math.round(left)} min left`;
+    }
+    showEta(+prog.dataset.done);
+    let last = +prog.dataset.done;
+    setInterval(async () => {
+      try {
+        const r = await (await fetch('/api/runs/' + id)).json();
+        if (r.status !== 'running' && r.status !== 'stopping') return location.reload();
+        if (r.done - last >= {{ data.products|length or 1 }} ) return location.reload();
+        prog.querySelector('.p-done').textContent = r.done;
+        prog.querySelector('.bar span').style.width = (100 * r.done / total) + '%';
+        showEta(r.done);
+      } catch (e) {}
+    }, 4000);
+  }
+})();
+</script>
+{% endblock %}

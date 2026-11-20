@@ -1,0 +1,63 @@
+{% from "_icons.html" import icon %}<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Delivery Coverage{% endblock %} · Parxen</title>
+  <script>
+    // Day mode is the default; dark only if the user picked it.
+    try { if (localStorage.getItem('theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d4ed8'/%3E%3Cpath d='M16 26s-7-6.2-7-11.2a7 7 0 0 1 14 0C23 19.8 16 26 16 26z' fill='none' stroke='white' stroke-width='2.2'/%3E%3C/svg%3E">
+</head>
+<body>
+{% set ep = request.endpoint %}
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark">{{ icon("mark", 20) }}</span>
+      <span class="brand-text"><b>Delivery Coverage</b><small>Parxen · Flipkart</small></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep in ('dashboard','run_view') }}">{{ icon("overview", 18) }}<span>Overview</span></a>
+      <a href="{{ url_for('products') }}" class="{{ 'on' if ep == 'products' }}">{{ icon("box", 18) }}<span>Products</span></a>
+      <a href="{{ url_for('pincodes') }}" class="{{ 'on' if ep == 'pincodes' }}">{{ icon("pin", 18) }}<span>Pincodes</span></a>
+      <a href="{{ url_for('runs') }}" class="{{ 'on' if ep == 'runs' }}">{{ icon("history", 18) }}<span>History</span></a>
+      <a href="{{ url_for('settings') }}" class="{{ 'on' if ep == 'settings' }}">{{ icon("calendar", 18) }}<span>Settings</span></a>
+      <a href="{{ url_for('site_preview') }}" target="_blank" rel="noopener" title="The read-only page your team sees, with the last published data">{{ icon("external", 18) }}<span>Hosted view</span></a>
+    </nav>
+    <div class="side-foot">
+      {% if active_run %}
+        <a class="live" href="{{ url_for('dashboard') }}"><span class="pulse"></span>Check in progress</a>
+      {% endif %}
+      <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch colour theme">
+        <span class="t-light">{{ icon("moon", 16) }} Dark mode</span>
+        <span class="t-dark">{{ icon("sun", 16) }} Day mode</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}<div class="toasts">
+        {% for cat, m in msgs %}<div class="toast {{ cat }}" role="status">{{ icon("check" if cat == "ok" else "alert", 16) }}<span>{{ m }}</span></div>{% endfor %}
+      </div>{% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script>
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const d = document.documentElement, next = d.dataset.theme === 'dark' ? 'light' : 'dark';
+    d.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  });
+  setTimeout(() => document.querySelectorAll('.toast').forEach(t => t.classList.add('hide')), 5000);
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div>
+    <p class="eyebrow">Catalogue</p>
+    <h1>Products</h1>
+    <p class="sub">{{ items|selectattr('active')|list|length }} of {{ items|length }} listings included in checks. Each colour or variant is its own Flipkart listing.</p>
+  </div>
+</header>
+
+<form class="card add-form" method="post">
+  <div class="add-ico">{{ icon("plus", 18) }}</div>
+  <label class="field grow"><span>Flipkart product link</span>
+    <input name="url" required placeholder="https://www.flipkart.com/parxen-…/p/itm…?pid=…" autocomplete="off"></label>
+  <label class="field"><span>Display name <em>optional</em></span>
+    <input name="name" placeholder="e.g. Parxen 20000 mAh Wireless"></label>
+  <button class="btn primary">Add product</button>
+</form>
+
+<section class="card table-card">
+  <table class="tbl">
+    <thead><tr>
+      <th>Product</th><th>Flipkart ID</th>
+      <th class="num">Coverage{% if last_run %} <span class="th-note">latest</span>{% endif %}</th>
+      <th>Status</th><th class="actions-col"><span class="sr">Actions</span></th>
+    </tr></thead>
+    <tbody>
+    {% for p in items %}
+      {% set c = cov.get(p.id) %}
+      <tr class="{{ '' if p.active else 'is-off' }}">
+        <td>
+          <form method="post" action="{{ url_for('product_action', pid=p.id, action='rename') }}" class="rename">
+            <input name="name" value="{{ p.name }}" aria-label="Product name" required>
+            <button class="icon-btn save" title="Save name">{{ icon("check", 15) }}</button>
+          </form>
+        </td>
+        <td><a class="id-link mono" href="{{ p.url }}" target="_blank" rel="noopener" title="Open on Flipkart">{{ p.pid or '—' }} {{ icon("external", 13) }}</a></td>
+        <td class="num">
+          {% if c %}
+            <span class="cov-inline"><span class="cov-bar"><span style="width: {{ c.pct }}%"></span></span><b>{{ c.pct }}%</b><span class="muted">{{ c.ok }}/{{ c.n }}</span></span>
+          {% else %}<span class="muted">Not checked yet</span>{% endif %}
+        </td>
+        <td><span class="badge {{ 'b-done' if p.active else 'b-off' }}">{{ 'Active' if p.active else 'Paused' }}</span></td>
+        <td class="row-actions">
+          <form method="post" action="{{ url_for('product_action', pid=p.id, action='toggle') }}">
+            <button class="icon-btn" title="{{ 'Pause — skip in checks' if p.active else 'Resume' }}">{{ icon("pause" if p.active else "resume", 15) }}</button></form>
+          <form method="post" action="{{ url_for('product_action', pid=p.id, action='delete') }}" onsubmit="return confirm('Remove {{ p.name }}? Past reports keep their results.')">
+            <button class="icon-btn danger" title="Remove">{{ icon("trash", 15) }}</button></form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-row">No products yet. Paste a Flipkart link above to add one.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
